@@ -34,3 +34,6 @@ jobs:
         with:
           files: Battery-TUI-linux-x86_64.tar.gz
           generate_release_notes: true # 自動でリリースノート（PRやコミットのまとめ）を生成
+    
+      - name: Run release.sh
+        run: ./release.sh

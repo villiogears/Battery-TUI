@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     branches:
-      - main # mainブランチにプッシュされた時に毎回実行
+      - master # mainブランチにプッシュされた時に毎回実行
   workflow_dispatch:
 
 jobs:

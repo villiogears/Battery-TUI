@@ -26,6 +26,8 @@ struct BatteryInfo {
     energy_full: f64,
     energy_full_design: f64,
     power_now: f64,
+    voltage_now: f64,
+    current_now: f64,
     manufacturer: String,
     model_name: String,
     cycle_count: u64,
@@ -72,6 +74,7 @@ fn get_batteries() -> Vec<BatteryInfo> {
                 let current_now_ua = read_file_u64(&dir.join("current_now"));
                 
                 let voltage_now_uv = read_file_u64(&dir.join("voltage_now")).unwrap_or(12_000_000);
+                info.voltage_now = voltage_now_uv as f64 / 1_000_000.0;
                 
                 if let Some(e) = energy_now_uwh {
                     info.energy_now = e as f64 / 1_000_000.0;
@@ -93,8 +96,10 @@ fn get_batteries() -> Vec<BatteryInfo> {
                 
                 if let Some(p) = power_now_uw {
                     info.power_now = p as f64 / 1_000_000.0;
+                    info.current_now = if info.voltage_now > 0.0 { info.power_now / info.voltage_now } else { 0.0 };
                 } else if let Some(c) = current_now_ua {
-                    info.power_now = (c as f64 * voltage_now_uv as f64) / 1_000_000_000_000.0;
+                    info.current_now = c as f64 / 1_000_000.0;
+                    info.power_now = info.current_now * info.voltage_now;
                 }
                 
                 if info.energy_full_design > 0.0 {
@@ -250,8 +255,17 @@ fn ui(f: &mut ratatui::Frame, batteries: &[BatteryInfo]) {
                 Span::raw(&bat.model_name),
             ]),
             Line::from(vec![
-                Span::styled("Power Draw: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(format!("{:.2} W", bat.power_now)),
+                Span::styled(
+                    if bat.status == "Charging" {
+                        "Power Supply: "
+                    } else if bat.status == "Discharging" {
+                        "Power Draw: "
+                    } else {
+                        "Power Rate: "
+                    },
+                    Style::default().add_modifier(Modifier::BOLD)
+                ),
+                Span::raw(format!("{:.2} W ({:.2} V, {:.2} A)", bat.power_now, bat.voltage_now, bat.current_now)),
             ]),
             Line::from(vec![
                 Span::styled("Energy Now: ", Style::default().add_modifier(Modifier::BOLD)),

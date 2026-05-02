@@ -6,8 +6,8 @@
 
 set -e
 
-# gitの作業ディレクトリがクリーンか確認
-if [[ -n $(git status -s) ]]; then
+# gitの作業ディレクトリがクリーンか確認 (未追跡ファイルは無視)
+if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "エラー: 未コミットの変更があります。変更をコミットまたはスタッシュしてから実行してください。"
   exit 1
 fi
@@ -43,8 +43,9 @@ esac
 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 echo "新しいバージョン: $NEW_VERSION"
 
-# Cargo.toml のバージョンを書き換え (macOS の sed に対応)
-sed -i '' "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+# Cargo.toml のバージョンを書き換え (macOSとLinuxのsed両対応)
+sed -i.bak "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+rm -f Cargo.toml.bak
 
 # Cargo.lock も更新しておく
 cargo check > /dev/null 2>&1

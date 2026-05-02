@@ -2,38 +2,71 @@ name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*' # v1.0.0 のようなバージョンのタグがPushされた時にトリガー
-  workflow_dispatch: # 手動でワークフローを実行できるようにする
+    branches:
+      - main # mainブランチにプッシュされた時に毎回実行
+  workflow_dispatch:
 
 jobs:
   build:
     name: Build on Ubuntu
     runs-on: ubuntu-latest
     permissions:
-      contents: write # リリースを作成・ファイルをアップロードするために必要な権限
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # タグも含めて取得する
+
+      - name: Check if already bumped
+        id: check_bump
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == chore:\ bump\ version* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure Git
+        if: steps.check_bump.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Auto Bump Version
+        if: steps.check_bump.outputs.skip == 'false'
+        id: bump
+        run: |
+          ./release.sh patch
+          # 新しいバージョン名を取得して出力にセット
+          NEW_VERSION=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "tag=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Get tag for release
+        id: get_tag
+        run: |
+          if [[ "${{ steps.check_bump.outputs.skip }}" == "true" ]]; then
+            # すでにタグ付けされてpushされた場合
+            NEW_VERSION=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+            echo "tag=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ steps.bump.outputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build project (Release)
         run: cargo build --release
 
       - name: Archive binary
         run: |
-          # 成果物を圧縮（Cargo.tomlのnameに合わせた実行ファイル名）
           tar -czvf Battery-TUI-linux-x86_64.tar.gz -C target/release Battery-TUI
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ steps.get_tag.outputs.tag }}
           files: Battery-TUI-linux-x86_64.tar.gz
-          generate_release_notes: true # 自動でリリースノート（PRやコミットのまとめ）を生成
-    
-      - name: Run release.sh
-        run: ./release.sh
+          generate_release_notes: true
